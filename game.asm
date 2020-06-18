@@ -35,19 +35,97 @@ int_to_string:
     mov eax,esi
     ret
 
-RANDGENERATOR:
-RANDSTART:
-    mov AH, 00h       
-    int 1AH    
+; input
+cmp_edx_eax:
+    loop2:
+    xor eax, eax
+    mov [query], eax
+    mov [query+4], eax
+    mov [query+8], eax
+    ; Read and store the user input
+    mov eax, 3
+    mov ebx, 2
+    mov ecx, query  
+    mov edx, 5
+    int 80h
 
-    mov  ax, dx  ; move dx to ax
-    xor  dx, dx  ; clear dx
-    mov  cx, 10  ; move 10 dec to CX
-    div  cx      ; divide ax by cx
-    add  dl, '0' ; to ascii from '0' to '9'
-    mov ah, 2h   ; call interrupt to display a value in DL
-    int 21h    
-RET 
+    xor eax, eax
+    mov [cnt], eax
+    loop_query:
+
+    mov eax, [cnt]
+    lea esi, [query+eax]
+    mov ecx, 1
+    call string_to_int
+    mov edx, [random]
+    cmp eax, 208
+    je loop2
+    cmp eax, 218
+    je loop2
+    cmp eax, edx
+    jg greater_than
+    je equal
+    less_than:
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, lowMsg
+    mov edx, lenLowMsg
+    int 80h
+    
+
+    mov ebx, [cnt]
+    add ebx, 2
+    mov [cnt], ebx
+    xor eax, eax
+    lea esi, [query+ebx]
+    mov ecx, 1
+    call string_to_int
+    cmp eax, 0
+
+
+    jne loop_query
+
+
+
+    jmp loop2
+
+    greater_than:
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, highMsg
+    mov edx, lenHighMsg
+    int 80h
+
+    mov ebx, [cnt]
+    add ebx, 2
+    mov [cnt], ebx
+    xor eax, eax
+    lea esi, [query+ebx]
+    mov ecx, 1
+    call string_to_int
+    cmp eax,0
+    jne loop_query
+
+    jmp loop2
+
+    equal:
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, rightMsg
+    mov edx, lenRightMsg
+    int 80h
+
+
+RANDGENERATOR:         ; generate a rand no using the system time
+RANDSTART:
+   mov ah, 02h  ; interrupts to get system time        
+   int 80h      ; CX:DX now hold number of clock ticks since midnight      
+
+   mov  ax, dx
+   xor  dx, dx
+   mov  cx, 10    
+   div  cx       ; here dx contains the remainder of the division - from 0 to 9
+RET    
 
 print_uint32:
     mov    eax, edi              ; function arg
@@ -103,6 +181,8 @@ section .bss
     num resb 5
     counter resb 8
     cnt resb 8
+    random resb 8
+    query resb 8
 
 section .text
     global _start
@@ -139,6 +219,7 @@ _start:
     inc ebp
     loop1:
 
+    ; menebak angka ke-
     mov eax, 4
     mov ebx, 1
     mov ecx, guessMsg
@@ -147,8 +228,14 @@ _start:
     
     mov ebx, ebp
     .repeat:
-    lea    edi, [rbx + 0]      ; put +whatever constant you want here.
+    mov    edi, ebp      ; put +whatever constant you want here.
     call   print_uint32
+
+    mov eax, 5
+    mov [random], eax
+
+    call cmp_edx_eax
+
     inc ebp      ; Increment
     mov eax, [counter]
     cmp ebp,eax    ; Compare cx to the limit
