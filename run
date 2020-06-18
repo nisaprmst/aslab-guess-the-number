@@ -1,0 +1,5 @@
+#!/bin/bash
+
+nasm -f elf64 game.asm
+ld -m elf_x86_64 -s -o game game.o
+./game
