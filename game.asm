@@ -3,51 +3,49 @@
 ; ECX = number of digits in the string (must be > 0)
 ; Output:
 ; EAX = integer value
+; Credit : Michael, https://stackoverflow.com/questions/19309749/nasm-assembly-convert-input-to-integer
 string_to_int:
-    xor ebx,ebx    ; clear ebx
+    xor ebx, ebx    ; clear ebx
     .next_digit:
     movzx eax,byte[esi]
     inc esi
-    sub al,'0'    ; convert from ASCII to number
-    imul ebx,10
-    add ebx,eax   ; ebx = ebx*10 + eax
+    sub al, '0'    ; convert from ASCII to number
+    imul ebx, 10
+    add ebx, eax   ; ebx = ebx*10 + eax
     loop .next_digit  ; while (--ecx)
-    mov eax,ebx
-    ret
-
-; Input:
-; EAX = integer value to convert
-; ESI = pointer to buffer to store the string in (must have room for at least 10 bytes)
-; Output:
-; EAX = pointer to the first character of the generated string
-int_to_string:
-    add esi,9
-    mov byte [esi],0x00    
-    mov ebx,10         
-    .next_digit:
-    xor edx,edx         ; Clear edx prior to dividing edx:eax by ebx
-    div ebx             ; eax /= 10
-    add dl,'0'          ; Convert the remainder to ASCII 
-    dec esi             ; store characters in reverse order
-    mov [esi],dl
-    test eax,eax            
-    jnz .next_digit     ; Repeat until eax==0
-    mov eax,esi
-    ret
+    mov eax, ebx
+ret
 
 ; input
-cmp_edx_eax:
+loop_round:
+
     loop2:
+    ; ronde ke-
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, roundMsg
+    mov edx, lenRoundMsg
+    int 80h
+    
+    xor eax, eax
+    mov eax, [round]
+    inc eax
+    mov [round], eax
+    mov    edi, eax      ; put +whatever constant you want here.
+    call   print_int
+    
     xor eax, eax
     mov [query], eax
     mov [query+4], eax
     mov [query+8], eax
+
     ; Read and store the user input
     mov eax, 3
     mov ebx, 2
     mov ecx, query  
     mov edx, 5
     int 80h
+
 
     xor eax, eax
     mov [cnt], eax
@@ -82,7 +80,6 @@ cmp_edx_eax:
     call string_to_int
     cmp eax, 0
 
-
     jne loop_query
 
 
@@ -116,48 +113,54 @@ cmp_edx_eax:
     int 80h
 
 
-RANDGENERATOR:         ; generate a rand no using the system time
-RANDSTART:
-   mov ah, 02h  ; interrupts to get system time        
-   int 80h      ; CX:DX now hold number of clock ticks since midnight      
+; pseudo random generator
+; Input:
+; rand = input value
+; EDX = output -> pseudo random number
+random_generator:
+    mov eax, [rand]
+    mov ecx, 10
+    div ecx         ; edx = remainder
+    mov eax, edx
+    mov ecx, edx
+    mul ecx         ; eax = product
+    mul ecx         ; eax = product
+    add edx, ecx    ;
+    mov eax, edx
+    mov ecx, 10
+    div ecx         ; edx = remainder
+ret  
 
-   mov  ax, dx
-   xor  dx, dx
-   mov  cx, 10    
-   div  cx       ; here dx contains the remainder of the division - from 0 to 9
-RET    
-
-print_uint32:
-    mov    eax, edi              ; function arg
-
-    mov    ecx, 0xa              ; base 10
-    push   rcx                   ; newline = 0xa = base
+; Input:
+; EDI = integer to be displayed
+; Credit : Peter Cordes, https://stackoverflow.com/questions/13166064/how-do-i-print-an-integer-in-assembly-level-programming-without-printf-from-the
+print_int:
+    mov    eax, edi
+    mov    ecx, 0xa     ; base 10
+    push   rcx          
     mov    rsi, rsp
-    sub    rsp, 16               ; not needed on 64-bit Linux, the red-zone is big enough.  Change the LEA below if you remove this.
+    sub    rsp, 16      ; add space
 
-;;; rsi is pointing at '\n' on the stack, with 16B of "allocated" space below that.
-.toascii_digit:                ; do {
+    .digit_to_char:
     xor    edx, edx
-    div    ecx                   ; edx=remainder = low digit = 0..9.  eax/=10
-                                 ;; DIV IS SLOW.  use a multiplicative inverse if performance is relevant.
-    add    edx, '0'
-    dec    rsi                 ; store digits in MSD-first printing order, working backwards from the end of the string
+    div    ecx          ; edx = remainder
+    add    edx, '0'     ; to string
+    dec    rsi          ; WARNING!!! working backward for printing
     mov    [rsi], dl
 
-    test   eax,eax             ; } while(x);
-    jnz  .toascii_digit
-;;; rsi points to the first digit
+    test   eax, eax     ; } while(x);
+    jnz  .digit_to_char
 
+    ; syscall print
 
-    mov    eax, 1               ; __NR_write from /usr/include/asm/unistd_64.h
-    mov    edi, 1               ; fd = STDOUT_FILENO
-    lea    edx, [rsp+16 + 1]    ; yes, it's safe to truncate pointers before subtracting to find length.
-    sub    edx, esi             ; length=end-start, including the \n
-    syscall                     ; write(1, string,  digits + 1)
+    mov    eax, 1
+    mov    edi, 1
+    lea    edx, [rsp+16 + 1]    ; truncate pointers before subtracting to find length.
+    sub    edx, esi             ; edx = length -> edx - esi, including the \n
+    syscall                     ; call kernel using syscall 64bit:)
 
-    add  rsp, 24                ; (in 32-bit: add esp,20) undo the push and the buffer reservation
+    add  rsp, 24                ; undo the push and the buffer reservation
 ret
-
 
 section .data
     userMsg db '***Guess Three Number***', 0xa
@@ -176,13 +179,20 @@ section .data
     lenDiffMsg equ $-diffMsg
     guessMsg db 'Menebak angka ke-'
     lenGuessMsg equ $-guessMsg
+    roundMsg db 'Ronde ke-'
+    lenRoundMsg equ $-roundMsg
+    sumRoundMsg db 'Jumlah total ronde = '
+    lenSumRoundMsg equ $-sumRoundMsg
 
 section .bss
     num resb 5
     counter resb 8
     cnt resb 8
     random resb 8
+    rand resb 8
+    round resb 8
     query resb 8
+    
 
 section .text
     global _start
@@ -217,8 +227,12 @@ _start:
 
     xor ebp,ebp   ; cx-register is the counter, set to 0
     inc ebp
-    loop1:
 
+    xor eax, eax  ; round counter
+    mov [round], eax
+    loop1:
+    mov eax, [round]
+    mov [rand], eax
     ; menebak angka ke-
     mov eax, 4
     mov ebx, 1
@@ -227,19 +241,32 @@ _start:
     int 80h
     
     mov ebx, ebp
+
     .repeat:
     mov    edi, ebp      ; put +whatever constant you want here.
-    call   print_uint32
+    call   print_int
 
-    mov eax, 5
+    call random_generator
+    
+
+    mov eax, edx
     mov [random], eax
 
-    call cmp_edx_eax
+    call loop_round
 
     inc ebp      ; Increment
     mov eax, [counter]
     cmp ebp,eax    ; Compare cx to the limit
     jle loop1   ; Loop while less or equal
+
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, sumRoundMsg
+    mov edx, lenSumRoundMsg
+    int 80h
+
+    mov    edi, [round]      ; put +whatever constant you want here.
+    call   print_int
 
     mov	eax,1    ;system call number (sys_exit)
     int	0x80     ;call kernel
